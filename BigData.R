@@ -1,0 +1,470 @@
+
+  # Big Data Analysis
+  ## In this project, we try to explore the relationship between British-American Tobacco's stock prices and google trends.
+  ## We will be using 3 keywords to explore the relationship. i.e. 
+  ###1. Quit Smoking
+  ###2. Effects of smoking
+  ###3. Electronic cigarette
+
+# Importing libraries
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(scales)
+library(reshape2)
+library(lubridate)
+library(gridExtra)
+library(readxl)
+library(GGally)
+library(cowplot)
+library(plotly)
+library(corrplot)
+library(forecast)
+library(grid)
+library(caret)
+library(corrplot)
+
+# Reading Stock Price data
+stock_data <- tbl_df(read.csv("BTC.csv"))
+# Extracting year and month
+stock_data <-
+  mutate(stock_data, year_month = format(as.Date(stock_data$date, format =
+                                                   "%m/%d/%Y"), "%Y-%m"))
+# Calculating average stock price monthly
+
+stock_data_by_month <- stock_data %>%
+  group_by(year_month) %>%
+  summarise(
+    stock_price = mean(close)
+  ) %>%
+  arrange(year_month)
+
+# Reading google trends data
+key1 <- tbl_df(read.csv("quitsmoking.csv"))
+key2 <- tbl_df(read.csv("EofSmoking.csv"))
+key3 <- tbl_df(read.csv("ECig.csv"))
+
+colnames(key1)[1]<-"year_month"
+colnames(key1)[2]<-"quitsmoking"
+
+colnames(key2)[1]<-"year_month"
+colnames(key2)[2]<-"effectsofsmoking"
+
+colnames(key3)[1]<-"year_month"
+colnames(key3)[2]<-"electroniccigarette"
+# Merging all data
+allData <-merge(key1,stock_data_by_month,id="year_month")
+allData<-merge(key2,allData,id="year_month")
+allData<-merge(key3,allData,id="year_month")
+
+
+# Summary of all Data
+# Checking out the summary of data
+summary(allData)
+# Helper function to plot multiple graphs
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  require(grid)
+  
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+  
+  numPlots = length(plots)
+  
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                     ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+  
+  if (numPlots==1) {
+    print(plots[[1]])
+    
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+      
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+# Data distribution
+## We use density plots to observe the data distribution
+p1<-ggplot(data=allData, aes(allData$stock_price )) + 
+  geom_histogram(aes(y=..density..),col="red", 
+                 fill="green", 
+                 alpha = .2)+geom_density(col=2)+xlab("Stock price (£)")+ggtitle("A")
+
+
+p2<-ggplot(data=allData, aes(allData$quitsmoking )) + 
+  geom_histogram(aes(y=..density..),col="red", 
+                 fill="green", 
+                 alpha = .2)+geom_density(col=2) + xlab("Quit smoking (GSV)")+ggtitle("B")
+
+p3<-ggplot(data=allData, aes(allData$effectsofsmoking)) + 
+  geom_histogram(aes(y=..density..),col="red", 
+                 fill="green", 
+                 alpha = .2)+geom_density(col=2) +xlab("Effects of smoking (GSV)")+ggtitle("C")
+
+p4<-ggplot(data=allData, aes(allData$electroniccigarette )) + 
+  geom_histogram(aes(y=..density..),col="red", 
+                 fill="green", 
+                 alpha = .2)+geom_density(col=2) + xlab("Electronic ciggarette (GSV)")+ggtitle("D")
+multiplot(p1, p2, p3, p4, cols=2)
+
+
+
+# Plotting monthly values of Stock price against google trends
+
+p <- ggplot(allData, aes(x = date))
+p <- p + geom_line(aes(y = stock_price, colour = "Stock Price",group="stock_price"))
+
+# adding the relative humidity data, transformed to match roughly the range of the temperature
+p <- p + geom_line(aes(y = quitsmoking, colour = "Quit smoking",group="quitsmoking"))
+
+# now adding the secondary axis, following the example in the help file ?scale_y_continuous
+# and, very important, reverting the above transformation
+p <- p + scale_y_continuous(sec.axis = sec_axis(~.*1, name = "Google Search"))
+
+# modifying colours and theme options
+p <- p + scale_colour_manual(values = c("blue", "red"))
+p <- p + labs(y = "Stock Price (£)",
+              x = "Months",
+              colour = " ")
+p1 <- p + theme(legend.position = c(0.8, 0.9))+ggtitle("A. Stock price vs Quit Smoking")+theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+theme(axis.text = element_text(size=12),
+                                            axis.title=element_text(size=16))
+
+
+p <- ggplot(allData, aes(x = date))
+p <- p + geom_line(aes(y = stock_price, colour = "Stock Price",group="stock_price"))
+
+# adding the relative humidity data, transformed to match roughly the range of the temperature
+p <- p + geom_line(aes(y = effectsofsmoking, colour = "Effects of smoking",group="effectsofsmoking"))
+
+# now adding the secondary axis, following the example in the help file ?scale_y_continuous
+# and, very important, reverting the above transformation
+p <- p + scale_y_continuous(sec.axis = sec_axis(~.*1, name = "Google Search"))
+
+# modifying colours and theme options
+p <- p + scale_colour_manual(values = c("blue", "red"))
+p <- p + labs(y = "Stock Price (£)",
+              x = "Months",
+              colour = " ")
+p2 <- p + theme(legend.position = c(0.8, 0.9))+ggtitle("B. Stock price vs Effects of Smoking")+theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+theme(axis.text = element_text(size=12),
+                                            axis.title=element_text(size=16))
+
+p <- ggplot(allData, aes(x = date))
+p <- p + geom_line(aes(y = stock_price, colour = "Stock Price",group="stock_price"))
+
+# adding the relative humidity data, transformed to match roughly the range of the temperature
+p <- p + geom_line(aes(y = electroniccigarette, colour = "Electronic cigarette",group="electroniccigarette"))
+
+# now adding the secondary axis, following the example in the help file ?scale_y_continuous
+# and, very important, reverting the above transformation
+p <- p + scale_y_continuous(sec.axis = sec_axis(~.*1, name = "Google Search"))
+
+# modifying colours and theme options
+p <- p + scale_colour_manual(values = c("blue", "red"))
+p <- p + labs(y = "Stock Price (£)",
+              x = "date",
+              colour = " ")
+p3 <- p + theme(legend.position = c(0.8, 0.9))+ggtitle("C. Stock price vs Electronic cigarette")+
+  theme_minimal() +theme(axis.text.x = element_text(angle = 90))+
+  scale_x_date(date_breaks = "8 month")+
+  theme(axis.text = element_text(size=10),axis.title=element_text(size=16))
+grid.arrange(p1,p2,p3)
+# Standardizing the data
+
+allData$quitsmoking_std<-as.numeric(scale(allData$quitsmoking ))
+allData$effectsofsmoking_std<-as.numeric(scale(allData$effectsofsmoking ))
+allData$electroniccigarette_std<-as.numeric(scale(allData$electroniccigarette ))
+allData$stock_price_std<-as.numeric(scale(allData$stock_price))
+
+
+# Normality test for stock prices
+shapiro.test(allData$stock_price_std)
+
+# Observing co-relation
+## Since data-distributions do not seem to be normal, we will use kendall's co-relation test
+## 1. Effects of smoking
+
+###Normality test
+shapiro.test(allData$effectsofsmoking_std )
+
+cor.test(allData$effectsofsmoking ,allData$stock_price_std,method="kendall")
+
+linearModel<-lm(effectsofsmoking_std~stock_price_std,data=allData)
+summary(linearModel)
+ggplot(allData, aes(x=effectsofsmoking_std , y=stock_price_std)) + geom_point()+geom_smooth(method=lm)+xlab("Effects of smoking(normalised)")+ylab("Stock price(normalised)")+ggtitle("Scatter plot of Google trend vs Stock price")
+
+
+## 2. Quit smoking
+###Normality test
+shapiro.test(allData$quitsmoking_std)
+cor.test(allData$quitsmoking_std ,allData$stock_price_std,method="kendall")
+linearModel<-lm(quitsmoking_std~stock_price_std,data=allData)
+summary(linearModel)
+ggplot(allData, aes(x=quitsmoking_std , y=stock_price_std)) + geom_point()+geom_smooth(method=lm)+xlab("Quit smoking(normalised)")+ylab("Stock price(normalised)")+ggtitle("Scatter plot of Google trend vs Stock price")
+
+
+## 3. Electronic-Cigarrette
+###Normality test
+shapiro.test(allData$electroniccigarette_std)
+cor.test(allData$electroniccigarette_std,allData$stock_price_std,method="kendall")
+
+
+
+
+linearModel<-lm(electroniccigarette_std~stock_price_std,data=allData)
+summary(linearModel)
+
+
+
+ggplot(allData, aes(x= electroniccigarette_std, y=stock_price_std)) + geom_point()+geom_smooth(method=lm)+xlab("Electronic Cigarette(normalised)")+ylab("Stock price(normalised)")+ggtitle("Scatter plot of Google trend vs Stock price")
+
+cor_matrix<-cor(allData[,c("stock_price","quitsmoking","electroniccigarette","effectsofsmoking")])
+corrplot(cor_matrix,method="number")
+
+
+# Dividing data into training and test set
+## We will use 90% of the data as train, and 10% as test
+ntest <- 9
+len<-nrow(allData)
+train<-allData[1:(len-ntest),]
+test<-allData[(len-ntest+1):len,]
+# Making TS objects
+stock_price_train<- ts(train$stock_price_std, frequency=12)
+ecigg_train<-ts(train$electroniccigarette_std ,frequency = 12)
+effect_train<-ts(train$effectsofsmoking_std,frequency = 12)
+quit_train <- ts(train$quitsmoking_std,frequency = 12)
+
+
+stock_price_test<- ts(test$stock_price_std, frequency=12)
+ecigg_test<-ts(test$electroniccigarette_std ,frequency = 12)
+effect_test<-ts(test$effectsofsmoking_std,frequency = 12)
+quit_test <- ts(test$quitsmoking_std,frequency = 12)
+
+
+
+
+
+# Using Auto-Arima on training set (without regressors)
+model<-auto.arima(stock_price_train)
+pred<-forecast(model,h=9)
+plot(forecast(model,h=9))
+# predicted values of ARIMA
+auto_arima_pred<-as.numeric(pred$mean)
+without_reg<-as.numeric(pred$mean)
+
+
+# Evaluating on test set
+
+postResample(auto_arima_pred,test$stock_price_std)
+
+
+
+
+# Using Auto-Arima on training set (with regressors)
+#1. Using E-cig as a regressor
+model<-auto.arima(stock_price_train,xreg=ecigg_train)
+pred<-forecast(model,h=9,xreg=ecigg_test)
+plot(pred)
+
+# predicted values of ARIMA
+auto_arima_pred<-as.numeric(pred$mean)
+
+# Evaluating on test set
+
+postResample(auto_arima_pred,test$stock_price_std)
+
+
+
+
+# Using Auto-Arima on training set (with regressors)
+#2. Using Quit Smoking as a regressor
+model<-auto.arima(stock_price_train,xreg=quit_train)
+pred<-forecast(model,h=9,xreg=quit_test)
+plot(pred)
+
+# predicted values of ARIMA
+auto_arima_pred<-as.numeric(pred$mean)
+
+# Evaluating on test set
+
+postResample(auto_arima_pred,test$stock_price_std)
+
+
+
+# Using Auto-Arima on training set (with regressors)
+#3. Using effects of smoking as a regressor
+model<-auto.arima(stock_price_train,xreg=effect_train)
+pred<-forecast(model,h=9,xreg=effect_test)
+plot(pred)
+# predicted values of ARIMA
+auto_arima_pred<-as.numeric(pred$mean)
+
+# Evaluating on test set
+
+postResample(auto_arima_pred,test$stock_price_std)
+
+# Using Auto-Arima on training set (with regressors)
+#4. Using all keywords as a regressor
+xreg=cbind(ecigg_train,quit_train,effect_train)
+model<-auto.arima(stock_price_train,xreg=xreg)
+xreg=cbind(ecigg_test,quit_test,effect_test)
+pred<-forecast(model,h=9,xreg=xreg)
+plot(pred)
+
+# predicted values of ARIMA
+auto_arima_pred<-as.numeric(pred$mean)
+with_reg<-as.numeric(pred$mean)
+
+
+# Evaluating on test set
+postResample(auto_arima_pred,test$stock_price_std)
+
+
+
+# Now Testing with lagged values
+
+# Dividing data into training and test set
+## We will use 90% of the data as train, and 10% as test
+ntest <- 9
+len<-nrow(allData)
+train<-allData[1:(len-ntest),]
+test<-allData[(len-ntest+1):len,]
+
+
+# Making TS objects
+stock_price_train<- ts(allData$stock_price_std, frequency=12)
+ecigg_train<-ts(allData$electroniccigarette_std ,frequency = 12)
+effect_train<-ts(allData$effectsofsmoking_std,frequency = 12)
+quit_train <- ts(allData$quitsmoking_std,frequency = 12)
+
+
+stock_price_train_lagged<-stock_price_train[2:87]
+ecigg_train_lagged<-ecigg_train[1:86]
+quit_train_lagged<-quit_train[1:86]
+effect_train_lagged<-effect_train[1:86]
+
+stock_price_test_lagged<-stock_price_train[88:96]
+ecigg_test_lagged<-ecigg_train[87:95]
+quit_test_lagged<-quit_train[87:95]
+effect_test_lagged<-effect_train[87:95]
+
+
+# Using Auto-Arima on training set (without regressors)
+model<-auto.arima(stock_price_train_lagged)
+pred<-forecast(model,h=9)
+plot(forecast(model,h=9))
+
+
+# predicted values of ARIMA
+auto_arima_pred<-as.numeric(pred$mean)
+without_reg_lag<-as.numeric(pred$mean)
+
+
+# Evaluating on test set
+
+postResample(auto_arima_pred,test$stock_price_std)
+
+
+# Using Auto-Arima on training set (with regressors)
+#1. Using E-cig as a regressor
+
+
+model<-auto.arima(stock_price_train_lagged,xreg=ecigg_train_lagged)
+pred<-forecast(model,h=9,xreg =ecigg_test_lagged )
+plot(pred)
+
+# predicted values of ARIMA
+auto_arima_pred<-as.numeric(pred$mean)
+
+
+# Evaluating on test set
+
+postResample(auto_arima_pred,test$stock_price_std)
+
+#2. Using quit-smoking as a regressor
+
+model<-auto.arima(stock_price_train_lagged,xreg=quit_train_lagged)
+pred<-forecast(model,h=9,xreg =quit_test_lagged )
+plot(pred)
+
+# predicted values of ARIMA
+auto_arima_pred<-as.numeric(pred$mean)
+
+# Evaluating on test set
+postResample(auto_arima_pred,test$stock_price_std)
+
+
+
+#3. Using effect of smoking as a regressor
+
+model<-auto.arima(stock_price_train_lagged,xreg=effect_train_lagged)
+pred<-forecast(model,h=9,xreg =effect_test_lagged )
+plot(pred)
+
+# predicted values of ARIMA
+auto_arima_pred<-as.numeric(pred$mean)
+
+# Evaluating on test set
+postResample(auto_arima_pred,test$stock_price_std)
+
+
+
+#4. Using all keywords as a regressor
+
+
+xreg=cbind(effect_train_lagged,quit_train_lagged,ecigg_train_lagged)
+model<-auto.arima(stock_price_train_lagged,xreg=xreg)
+xreg=cbind(effect_test_lagged,quit_test_lagged,ecigg_test_lagged)
+pred<-forecast(model,h=9,xreg =xreg )
+plot(pred)
+
+# predicted values of ARIMA
+auto_arima_pred<-as.numeric(pred$mean)
+with_reg_lag<-as.numeric(pred$mean)
+
+
+# Evaluating on test set
+postResample(auto_arima_pred,test$stock_price_std)
+# Creating datafame with predicted stock prices of last 9 months with diff models
+temp<-data.frame(date=allData[88:96,"year_month"],original_stock_price=allData[88:96,"stock_price_std"],predicted_with_regressor=with_reg,predicted_without_regressor=without_reg,predicted_with_regressor_lag=with_reg_lag,predicted_without_regressor_lag=without_reg_lag)
+
+# Comparing Original and Predicted stock prices 
+p <- ggplot(temp, aes(x = date))
+# adding the relative humidity data, transformed to match roughly the range of the temperature
+p <- p + geom_line(aes(y = original_stock_price, colour = "Original Stock price",group="original_stock_price"))
+p <- p + geom_line(aes(y =predicted_with_regressor, colour = "Prediced with regressor",group="predicted_with_regressor"))
+p <- p + geom_line(aes(y = predicted_without_regressor, colour = "Prediced without regressor",group="predicted_without_regressor"))
+p <- p + geom_line(aes(y = predicted_with_regressor_lag, colour = "Prediced with regressor and lagged values",group="predicted_with_regressor_lag"))
+p <- p + geom_line(aes(y = predicted_without_regressor_lag, colour = "Predicted without regressor and lagged values",group="predicted_without_regressor_lag"))
+
+# now adding the secondary axis, following the example in the help file ?scale_y_continuous
+# and, very important, reverting the above transformation
+
+# modifying colours and theme options
+p <- p + scale_colour_manual(values = c("red", "blue","green","purple","orange"))
+p <- p + labs(y = "Stock Price",
+              x = "Months",
+              colour = " ")
+p <- p + theme(legend.position = c(0.8, 0.9))+ggtitle("Original vs Predicted stock price")+theme_minimal()+ theme(axis.text.x = element_text(angle = 90))+theme(axis.text = element_text(size=12),
+                                                                                                                                                                axis.title=element_text(size=16))
+p 
